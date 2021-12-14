@@ -1,7 +1,7 @@
-// 
+//
 // Subscriptions glue plugins to events
 // flowing through the Gekko.
-// 
+//
 
 var subscriptions = [
   {
@@ -18,6 +18,11 @@ var subscriptions = [
     emitter: 'market',
     event: 'marketStart',
     handler: 'processMarketStart'
+  },
+  {
+    emitter: 'market',
+    event: 'command',
+    handler: 'processCommand'
   },
   {
     emitter: 'tradingAdvisor',
@@ -109,6 +114,7 @@ var subscriptions = [
     event: 'roundtrip',
     handler: 'processRoundtrip'
   },
+
 ];
 
 module.exports = subscriptions;

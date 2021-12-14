@@ -12,19 +12,34 @@
       .grd.contain
         .grd-row
           .grd-row-col-3-6
+            h4 {{ gekkoName }}
+            h6(v-if='!!gekkoDescription')
+              textarea(rows='3' disabled="disabled") {{ gekkoDescription }}
+          .grd-row-col-3-6(v-if='isAdmin')
+            h4 User: &nbsp
+              a(:href='"/users/" + data.ownerId') {{ ownerName  }}
+        .grd.grd-row(v-if='isAdmin')
+          label(for='sendNotifications').wrapper Send Notifications:
+          input(type="checkbox" disabled="disabled" :checked="!!sendNotifications" )
+      .grd.contain
+        .grd-row
+          .grd-row-col-3-6
             h3 Market
             .grd-row
               .grd-row-col-3-6 Exchange
-              .grd-row-col-3-6 {{ config.watch.exchange }}
+              .grd-row-col-3-6 {{ config.watch && config.watch.exchange }}
             .grd-row
               .grd-row-col-3-6 Currency
-              .grd-row-col-3-6 {{ config.watch.currency }}
+              .grd-row-col-3-6 {{ config.watch && config.watch.currency }}
             .grd-row
               .grd-row-col-3-6 Asset
-              .grd-row-col-3-6 {{ config.watch.asset }}
+              .grd-row-col-3-6 {{ config.watch && config.watch.asset }}
             .grd-row
               .grd-row-col-3-6 Type
               .grd-row-col-3-6 {{ type }}
+            dib(v-if='isTradebot || (isPaperTrader && isAdmin)').grd-row
+              .grd-row-col-3-6 Api Key
+              .grd-row-col-3-6 {{ apiKey }}
           .grd-row-col-3-6
             h3 Runtime
             spinner(v-if='isLoading')
@@ -49,7 +64,7 @@
                   .grd-row-col-2-6 History size
                   .grd-row-col-4-6 {{ config.tradingAdvisor.historySize }}
         div(v-if='warmupRemaining', class='contain brdr--mid-gray p1 bg--orange')
-          | This stratrunner is still warming up for the next 
+          | This stratrunner is still warming up for the next
           i {{ warmupRemaining.replace(',', ' and ') }}
           | , it will not trade until it is warmed up.
         .grd-row(v-if='isStratrunner')
@@ -83,19 +98,32 @@
               .grd-row
                 .grd-row-col-3-6 Alpha
                 .grd-row-col-3-6 {{ round(report.alpha) }} {{ config.watch.currency }}
-        p(v-if='isStratrunner && !watcher && !isArchived') WARNING: stale gekko, not attached to a watcher, please report 
+        p(v-if='isStratrunner && !watcher && !isArchived') WARNING: stale gekko, not attached to a watcher, please report
           a(href='https://github.com/askmike/gekko/issues') here
           | .
-        p(v-if='!isArchived')
-          a(v-on:click='stopGekko', class='w100--s my1 btn--red') Stop Gekko
-        p(v-if='isArchived')
-          a(v-on:click='deleteGekko', class='w100--s my1 btn--red') Delete Gekko
-        p(v-if='isStratrunner && watcher && !isArchived')
-          em This gekko gets market data from 
-            router-link(:to='"/live-gekkos/" + watcher.id') this market watcher
-          | .
+        .grd-row
+          .grd-row-col-3-6
+            p(v-if='!isArchived && isAuthorized')
+              a(v-on:click='stopGekko', class='w100--s my1 btn--red') Stop Gekko
+            p(v-if='isArchived && isAuthorized')
+              a(v-on:click='deleteGekko', class='w100--s my1 btn--red') Delete Gekko
+            p(v-if='isAuthorized')
+              a(v-on:click='restartGekko', class='w100--s my1 btn--blue') Restart Gekko
+            p(v-if='isAdmin')
+              a(:href='logLink()' target='_blank' class='w100--s my1') Log
+            p(v-if='isStratrunner && watcher && !isArchived')
+              em This gekko gets market data from &nbsp
+                router-link(:to='"/live-gekkos/" + watcher.id') this market watcher
+              | .
+          .grd-row-col-3-6(v-if='isStratrunner && !isLoading && !warmupRemaining && !isArchived && isAuthorized && isAdmin')
+            p(v-if='true')
+              a(v-on:click='forceBuy', class='w100--s my1 btn--red') Force-buy
+            p(v-if='true')
+              a(v-on:click='forceSell', class='w100--s my1 btn--red') Force-sell
       template(v-if='!isLoading')
         h3.contain Market graph
+        template(v-if='candleFetch === "fetched"')
+          tradingviewChart(:height='500', v-bind:config="config", v-bind:data='chartData', v-bind:backtestResult="chartData")
         spinner(v-if='candleFetch === "fetching"')
         template(v-if='candleFetch === "fetched"')
           chart(:data='chartData', :height='300')
@@ -112,6 +140,9 @@ import spinner from '../global/blockSpinner.vue'
 import chart from '../backtester/result/chartWrapper.vue'
 import roundtrips from '../backtester/result/roundtripTable.vue'
 import paperTradeSummary from '../global/paperTradeSummary.vue'
+import tradingviewChart from '../tradingview/tradingviewChartContainer.vue'
+import toml from 'toml-js';
+
 // global moment
 
 export default {
@@ -123,12 +154,14 @@ export default {
     spinner,
     chart,
     paperTradeSummary,
-    roundtrips
+    roundtrips,
+    tradingviewChart,
   },
   data: () => {
     return {
       candleFetch: 'idle',
-      candles: false
+      candles: false,
+      config: false,
     }
   },
   computed: {
@@ -172,11 +205,30 @@ export default {
     type: function() {
       return this.data.logType;
     },
+    apiKey: function() {
+      const name = `${ _.get(this, 'data.config.trader.uniqueName')}`
+      return name;
+    },
     isStratrunner: function() {
       return this.type !== 'watcher';
     },
     isArchived: function() {
       return this.data.stopped;
+    },
+    isAuthorized: function() {
+      const dbId = this.$store.state.auth.user('id');
+      const isAdmin = this.$store.state.auth.isAdmin();
+      return this.data.ownerId && dbId && this.data.ownerId === dbId || isAdmin;
+    },
+    isAdmin: function() {
+      const isAdmin = this.$store.state.auth.isAdmin();
+      return !!isAdmin;
+    },
+    isTradebot: function() {
+      return  _.get(this, 'data.config.type') === 'tradebot';
+    },
+    isPaperTrader: function() {
+      return  _.get(this, 'data.config.type') === 'paper trader';
     },
     warmupRemaining: function() {
       if(!this.isStratrunner) {
@@ -230,8 +282,7 @@ export default {
 
       if(_.isEmpty(stratParams))
         return 'No parameters'
-
-      return JSON.stringify(stratParams, null, 4);
+      return toml.dump(stratParams);
     },
     isLoading: function() {
       if(!this.data)
@@ -253,7 +304,8 @@ export default {
         if(g.id === this.id)
           return false;
 
-        return _.isEqual(watch, g.config.watch);
+        return (watch && g.config && g.config.watch
+          && watch.asset === g.config.watch.asset && watch.currency === g.config.watch.currency && watch.exchange === g.config.watch.exchange);
       });
     },
     hasLeechers: function() {
@@ -267,13 +319,34 @@ export default {
         if(g.id === this.id)
           return false;
 
-        return _.isEqual(watch, g.config.watch);
+        // return _.isEqual(watch, g.config.watch);
+        return (watch && g.config && g.config.watch
+          && watch.asset === g.config.watch.asset && watch.currency === g.config.watch.currency && watch.exchange === g.config.watch.exchange);
       });
+    },
+    gekkoName: function() {
+      if(this.data)
+        return _.get(this.data, 'config.options.name');
+    },
+    gekkoDescription: function() {
+      if(this.data)
+        return _.get(this.data, 'config.options.description');
+    },
+    ownerName: function() {
+      if(this.data)
+        return _.get(this.data, 'ownerId');
+    },
+    sendNotifications: function() {
+      if(this.data)
+        return _.get(this.data, 'config.options.sendNotifications');
     }
   },
   watch: {
     'data.events.latest.candle.start': function() {
       setTimeout(this.getCandles, _.random(100, 2000));
+    },
+    'data.config': function() {
+      this.config = _.get(this, 'data.config')
     }
   },
   methods: {
@@ -343,7 +416,7 @@ export default {
         return alert('This Gekko is still running, stop it first!');
       }
 
-      if(!confirm('Are you sure you want to delete this Gekko?')) {
+      if(!confirm('Are you sure you want to DELETE this Gekko?')) {
         return;
       }
 
@@ -352,6 +425,32 @@ export default {
           path: `/live-gekkos/`
         });
       });
+    },
+    restartGekko: function() {
+
+      if(!confirm('Are you sure you want to RESTART this Gekko?')) {
+        return;
+      }
+
+      post('restartGekko', { id: this.data.id }, (err, res) => {
+        this.$router.push({
+          path: `/live-gekkos/`
+        });
+      });
+    },
+    forceBuy: function() {
+      post('forceBuyGekko', { id: this.data.id }, (err, res) => {
+        console.log(err, res);
+      });
+    },
+    forceSell: function() {
+      post('forceSellGekko', { id: this.data.id }, (err, res) => {
+        console.log(err, res);
+      });
+    },
+    logLink() {
+      const link = `${ this.id }.log`
+      return link;
     }
   }
 }

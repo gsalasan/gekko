@@ -65,6 +65,24 @@ var Base = function(settings) {
   if(!this.onTrade)
     this.onTrade = function() {};
 
+    if(!this.onCommand)
+    this.onCommand = function() {};
+
+  if(!this.onPortfolioChange)
+    this.onPortfolioChange = function() {};
+
+  if(!this.onPortfolioValueChange)
+    this.onPortfolioValueChange = function() {};
+
+  if(!this.onTriggerFired)
+    this.onTriggerFired = function() {};
+
+  if(!this.onPendingTrade)
+    this.onPendingTrade = function() {};
+
+  if(!this.onTerminatedTrades)
+    this.onTerminatedTrades = function() {};
+
   // let's run the implemented starting point
   this.init();
 
@@ -179,7 +197,7 @@ Base.prototype.propogateTick = function(candle) {
   _.each(this.indicators, (indicator, name) => {
     indicators[name] = indicator.result;
   });
-  
+
   _.each(this.tulipIndicators, (indicator, name) => {
     indicators[name] = indicator.result.result
       ? indicator.result.result
@@ -218,6 +236,33 @@ Base.prototype.processTrade = function(trade) {
   this.onTrade(trade);
 }
 
+Base.prototype.processPendingTrade = function(pendingTrade) {
+  this.onPendingTrade(pendingTrade);
+}
+
+Base.prototype.processTerminatedTrades = function(terminatedTrades) {
+  if (!terminatedTrades.reason) {
+    terminatedTrades.reason = 'Cancelled';
+  }
+  this.onTerminatedTrades(terminatedTrades);
+}
+
+Base.prototype.updatePortfolio = function(portfolio) {
+  this.onPortfolioChange(portfolio);
+}
+
+Base.prototype.newPortfolioValue = function(portfolioValue) {
+  this.onPortfolioValueChange(portfolioValue);
+}
+
+Base.prototype.triggerFired = function(portfolioValue) {
+  this.onTriggerFired(portfolioValue);
+}
+
+Base.prototype.processCommand = function(command) {
+  this.onCommand(command);
+}
+
 Base.prototype.addTalibIndicator = function(name, type, parameters) {
   this.asyncIndicatorRunner.addTalibIndicator(name, type, parameters);
 }
@@ -244,7 +289,7 @@ Base.prototype.advice = function(newDirection) {
     return;
   }
 
-  let trigger;
+  let trigger, limit, margin;
   if(_.isObject(newDirection)) {
     if(!_.isString(newDirection.direction)) {
       log.error('Strategy emitted unparsable advice:', newDirection);
@@ -272,13 +317,19 @@ Base.prototype.advice = function(newDirection) {
         }
       }
     }
-
+    if(newDirection.limit) {
+      limit = newDirection.limit;
+    }
+    if(newDirection.margin) { // this.is.margin.trade!
+      margin = newDirection.margin;
+    }
     newDirection = newDirection.direction;
   }
 
-  if(newDirection === this._currentDirection) {
-    return;
-  }
+  // I commented this out so Gekko will buy even if it bought previously
+  // if(newDirection === this._currentDirection) {
+  //   return;
+  // }
 
   if(newDirection === 'short' && this._pendingTriggerAdvice) {
     this._pendingTriggerAdvice = null;
@@ -290,16 +341,20 @@ Base.prototype.advice = function(newDirection) {
 
   const advice = {
     id: 'advice-' + this.propogatedAdvices,
-    recommendation: newDirection
+    recommendation: newDirection,
   };
-
+  if(limit) {
+    advice.limit = limit;
+  }
   if(trigger) {
     advice.trigger = trigger;
     this._pendingTriggerAdvice = 'advice-' + this.propogatedAdvices;
   } else {
     this._pendingTriggerAdvice = null;
   }
-
+  if(margin) {
+    advice.margin = margin;
+  }
   this.emit('advice', advice);
 
   return this.propogatedAdvices;

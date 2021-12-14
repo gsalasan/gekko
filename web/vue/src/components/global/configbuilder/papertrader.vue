@@ -1,8 +1,8 @@
 <template lang='pug'>
 .grd
   .px1
-    h3 Paper trader
-    a.btn--primary(href='#', v-on:click.prevent='switchToggle', v-if='toggle === "closed"') Change paper trader settings
+    h3
+      a(v-on:click.prevent='switchToggle') Paper trader
     template(v-if='toggle === "open"')
       p Settings:
       textarea.params(v-model='rawPaperTraderParams')
@@ -13,11 +13,14 @@
 
 import _ from 'lodash'
 import { get } from '../../../tools/ajax'
+import toml from 'toml-js';
 
 export default {
   created: function() {
     get('configPart/paperTrader', (error, response) => {
-      this.rawPaperTraderParams = response.part;
+      if(!(this.configCurrent && this.configCurrent.paperTrader)) {
+        this.rawPaperTraderParams = response.part;
+      }
     });
   },
   data: () => {
@@ -28,7 +31,18 @@ export default {
       toggle: 'closed'
     };
   },
+  props: ['configCurrent'],
   watch: {
+    configCurrent: {
+      immediate: true,
+      handler(val, oldVal) {
+        if(val && val.paperTrader) {
+          const pt = val.paperTrader;
+          const origObj = _.omit(pt, ['reportRoundtrips', 'enabled']);
+          this.rawPaperTraderParams = toml.dump(origObj);
+        }
+      }
+    },
     rawPaperTraderParams: function() { this.emitConfig() }
   },
   methods: {

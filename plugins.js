@@ -45,6 +45,13 @@ var plugins = [
     path: config => 'tradingAdvisor/tradingAdvisor.js',
   },
   {
+    name: "Plotly",
+    description: "Plots Gekko data onto a Plotly chart for easier analysis",
+    slug: "plotly",
+    async: false,
+    modes: ["backtest"]
+  },
+  {
     name: 'IRC bot',
     description: 'IRC module lets you communicate with Gekko on IRC.',
     slug: 'ircbot',
@@ -55,17 +62,31 @@ var plugins = [
       version: '0.5.2'
     }]
   },
-  {
+  /*{
     name: 'Telegram bot',
     description: 'Telegram module lets you communicate with Gekko on Telegram.',
     slug: 'telegrambot',
     async: false,
     modes: ['realtime'],
+    emits: ['command'],
     dependencies: [{
       module: 'node-telegram-bot-api',
       version: '0.24.0'
     }]
   },
+  {
+    name: 'Telegram bot async',
+    description: 'Telegram module lets you communicate with Gekko on Telegram.',
+    slug: 'telegrambotAsync',
+    async: true,
+    modes: ['realtime'],
+    // modes: ['realtime', 'backtest'],
+    emits: ['command'],
+    dependencies: [{
+      module: 'node-telegram-bot-api',
+      version: '0.30.0'
+    }]
+  },*/
   {
     name: 'XMPP bot',
     description: 'XMPP module lets you communicate with Gekko on Jabber.',
@@ -202,10 +223,64 @@ var plugins = [
     slug: 'slack',
     async: false,
     modes: ['realtime'],
+    // modes: ['realtime', 'backtest'], // remove backtest in prod!
     dependencies: [{
-      module: '@slack/client',
-      version: '3.13.0'
+      module: '@slack/web-api',
+      version: '^5.0.1'
+    }, {
+      module: '@slack/events-api',
+      version: '^2.2.0'
+    }, {
+      module: '@slack/rtm-api',
+      version: '^5.0.1'
     }]
+  },
+  {
+    name: 'Slack Async',
+    description: 'Sends trades to slack channel (async).',
+    slug: 'slackAsync',
+    async: true,
+    modes: ['realtime'],
+    // modes: ['realtime', 'backtest'], // remove backtest in prod!
+    dependencies: [{
+      module: '@slack/web-api',
+      version: '^6.0.0'
+    }, {
+      module: '@slack/events-api',
+      version: '^3.0.0'
+    }, {
+      module: '@slack/rtm-api',
+      version: '^6.0.0'
+    }]
+  },
+  {
+    name: 'Dependency Manager',
+    description: 'Ability to have dependant gekkos (e.g. for different timeframe indicators) - backtest version',
+    slug: 'dependencyManager',
+    async: false,
+    // async: true,
+    modes: ['realtime', 'backtest'],
+    emits: true,
+    path: config => 'dependencyManager/dependencyManager.js',
+  },
+  {
+    name: 'Gekkos Persistent',
+    description: 'Ability to have save gekkos and their events to DB',
+    slug: 'gekkosPersistent',
+    async: true,
+    modes: ['realtime'],
+    emits: true,
+    path: config => 'gekkosPersistent/index.js',
+  },
+  {
+    name: 'Dependency Manager Async',
+    description: 'Ability to have dependant gekkos (e.g. for different timeframe indicators) - UI version',
+    slug: 'dependencyManagerAsync',
+    async: true,
+    // async: true,
+    modes: ['realtime', 'backtest'],
+    emits: true,
+    path: config => 'dependencyManager/dependencyManagerAsync.js',
   },
   {
     name: 'IFTTT',

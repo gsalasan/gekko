@@ -4,6 +4,8 @@ const _ = require('lodash');
 const promisify = require('tiny-promisify');
 const pipelineRunner = promisify(require('../../core/workers/pipeline/parent'));
 
+let dependenciesManager = require('../state/cache').get('dependencies');
+
 // starts a backtest
 // requires a post body like:
 //
@@ -16,16 +18,26 @@ const pipelineRunner = promisify(require('../../core/workers/pipeline/parent'));
 //     roundtrips: true
 //   }
 // }
-module.exports = function *() {
+module.exports = async function (ctx, next) {
   var mode = 'backtest';
 
   var config = {};
 
   var base = require('./baseConfig');
 
-  var req = this.request.body;
+  var req = ctx.request.body;
 
   _.merge(config, base, req);
+  config.mode = mode;
+  /*if(!dependenciesManager){
+    dependenciesManager = require('./cache').get('dependencies'); // circular reference problem
+  }*/
 
-  this.body = yield pipelineRunner(mode, config);
+  if(dependenciesManager && config.dependencies && config.dependencies.length > 0){
+    await dependenciesManager.getDependencyResultsAsync(config);
+  }
+  const ts1 = Date.now();
+  ctx.body = await pipelineRunner(mode, config);
+  const ts2 = Date.now();
+  console.log(`backtest route:: exec time: ${ ts2 - ts1 }`);
 }

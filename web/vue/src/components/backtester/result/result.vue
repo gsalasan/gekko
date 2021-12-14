@@ -2,29 +2,49 @@
   div
     .hr.contain
     div.contain
-      h3 Backtest result
-    result-summary(:report='result.performanceReport')
-    .hr.contain
-    chart(:data='candles', height='500')
-    .hr.contain
-    roundtripTable(:roundtrips='result.roundtrips')
+      h3
+        a(v-if='isBatch' v-on:click.prevent='switchToggle') Batch backtest result
+        a(v-if='!isBatch' v-on:click.prevent='switchToggle') Backtest result
+    template(v-if='toggle === "open"')
+      result-summary(:report='result.performanceReport', :isBatch='isBatch')
+      .hr.contain
+      chart(:data='candles', height='500')
+      //.hr.contain
+      //tradingviewChart(:height='500', config={asdf: "a"})
+      .hr.contain
+      roundtripTable(:roundtrips='result.roundtrips')
 </template>
 
 <script>
 import resultSummary from './summary.vue'
 import chart from './chartWrapper.vue'
+// import tradingviewChart from '../../tradingview/tradingviewChartContainer.vue'
+
 import roundtripTable from './roundtripTable.vue'
 
 export default {
-  props: ['result'],
+  props: ['result', 'isBatch'],
   data: () => {
-    return {}
+    // config.watch.asset = "ltc"
+    // config.watch.currency = "btc"
+    // config.watch.exchange = "poloniex"
+    return {
+      toggle: 'open'
+    }
   },
-  methods: {},
+  methods: {
+    switchToggle: function() {
+      if(this.toggle === 'open')
+        this.toggle = 'closed';
+      else
+        this.toggle = 'open';
+    },
+  },
   components: {
     roundtripTable,
     resultSummary,
-    chart
+    chart,
+    // tradingviewChart
   },
   computed: {
     candles: function() {

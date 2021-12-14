@@ -8,6 +8,7 @@ const calcConfig = config.paperTrader;
 const watchConfig = config.watch;
 const dirs = util.dirs();
 const log = require(dirs.core + 'log');
+const avgVol = 1;
 
 const TrailingStop = require(dirs.broker + 'triggers/trailingStop');
 
@@ -42,6 +43,9 @@ const PaperTrader = function() {
   this.warmupCompleted = false;
 
   this.warmupCandle;
+
+  this.previousAdvice;
+  this.waitForVolume = false;
 }
 
 PaperTrader.prototype.relayPortfolioChange = function() {
@@ -76,13 +80,34 @@ PaperTrader.prototype.updatePosition = function(what) {
 
   let cost;
   let amount;
+  this.isLastTradeMargin = !!what.margin;
 
   // virtually trade all {currency} to {asset}
   // at the current price (minus fees)
-  if(what === 'long') {
+  if(what.recommendation === 'long') {
     cost = (1 - this.fee) * this.portfolio.currency;
+    // TODO: spreaaad
+    // this.portfolio.asset += this.extractFee(
+    //   this.portfolio.currency /
+    //       (this.price + (this.meta.config.spread ? this.meta.config.spread : 0))
+    // );
+    // console.log('updatePosition: ' + this.price + ', asset: ' + this.portfolio.asset + ', spread: ' + this.meta.config.spread);
+
+    // if (this.candle.volume < avgVol) {
+    //   this.portfolio.asset += this.extractFee(this.portfolio.currency / this.candle.high);
+    // } else {
+    //   this.portfolio.asset += this.extractFee(this.portfolio.currency / this.price);
+    // }
     this.portfolio.asset += this.extractFee(this.portfolio.currency / this.price);
+    if(what.margin) {
+      this.portfolio.currencyMargin = this.portfolio.currency;
+    }
     amount = this.portfolio.asset;
+
+    if (what.amount) {
+      amount = what.amount / this.price;
+    }
+
     this.portfolio.currency = 0;
 
     this.exposed = true;
@@ -91,23 +116,40 @@ PaperTrader.prototype.updatePosition = function(what) {
 
   // virtually trade all {currency} to {asset}
   // at the current price (minus fees)
-  else if(what === 'short') {
+  else if(what.recommendation === 'short') {
     cost = (1 - this.fee) * (this.portfolio.asset * this.price);
-    this.portfolio.currency += this.extractFee(this.portfolio.asset * this.price);
-    amount = this.portfolio.currency / this.price;
+    // if (this.candle.volume < avgVol) {
+    //   this.portfolio.currency += this.extractFee(this.portfolio.asset * this.candle.low);
+    //   amount = this.portfolio.currency / this.candle.low;
+    // }
+    // else {
+    //   this.portfolio.currency += this.extractFee(this.portfolio.asset * this.price);
+    //   amount = this.portfolio.currency / this.price;
+    // }
+    if(what.margin) {
+      this.portfolio.currency += this.extractFee((this.portfolio.currencyMargin * 2) - this.portfolio.asset * this.price); // todo: verify extractFee correctness!
+    } else {
+      this.portfolio.currency += this.extractFee(this.portfolio.asset * this.price);
+    }
+    amount = what.amount * this.price;
+
     this.portfolio.asset = 0;
 
     this.exposed = false;
     this.trades++;
   }
 
-  const effectivePrice = this.price * this.fee;
+  const effectivePrice = (this.price + (what.recommendation === 'long'?  this.meta.config.spread : 0)) * this.fee;
 
   return { cost, amount, effectivePrice };
 }
 
 PaperTrader.prototype.getBalance = function() {
-  return this.portfolio.currency + this.price * this.portfolio.asset;
+  if (this.isLastTradeMargin && this.exposed) {
+    return (this.portfolio.currencyMargin * 2) - this.portfolio.asset * this.price;
+  } else {
+    return this.portfolio.currency + this.price * this.portfolio.asset;
+  }
 }
 
 PaperTrader.prototype.now = function() {
@@ -115,6 +157,21 @@ PaperTrader.prototype.now = function() {
 }
 
 PaperTrader.prototype.processAdvice = function(advice) {
+  // Do not process advice and clear previous advice as they cancel out each other
+  if (this.waitForVolume && advice.recommendation !== this.previousAdvice.recommendation) {
+    this.waitForVolume = false;
+    this.previousAdvice = undefined;
+    return log.warn('[Papertrader] Cancel trade as previous unexecuted trade would negate each other');
+  }
+
+
+  // Set flags to delay trade until candle with enough volume
+  if (this.candle.volume < avgVol && !this.waitForVolume) {
+    this.previousAdvice = advice;
+    this.waitForVolume = true;
+    return log.info('[Papertrader] Not enough volume to process trade, will wait til next candle');
+  }
+
   let action;
   if(advice.recommendation === 'short') {
     action = 'sell';
@@ -163,7 +220,7 @@ PaperTrader.prototype.processAdvice = function(advice) {
     date: advice.date,
   });
 
-  const { cost, amount, effectivePrice } = this.updatePosition(advice.recommendation);
+  const { cost, amount, effectivePrice } = this.updatePosition(advice);
 
   this.relayPortfolioChange();
   this.relayPortfolioValueChange();
@@ -179,7 +236,8 @@ PaperTrader.prototype.processAdvice = function(advice) {
     balance: this.getBalance(),
     date: advice.date,
     effectivePrice,
-    feePercent: this.rawFee
+    feePercent: this.rawFee,
+    margin: advice.margin
   });
 }
 
@@ -227,7 +285,7 @@ PaperTrader.prototype.onStopTrigger = function() {
     date
   });
 
-  const { cost, amount, effectivePrice } = this.updatePosition('short');
+  const { cost, amount, effectivePrice } = this.updatePosition({ recommendation: 'short' });
 
   this.relayPortfolioChange();
   this.relayPortfolioValueChange();
@@ -243,7 +301,8 @@ PaperTrader.prototype.onStopTrigger = function() {
     balance: this.getBalance(),
     date,
     effectivePrice,
-    feePercent: this.rawFee
+    feePercent: this.rawFee,
+    // margin: ? // TODO!!
   });
 
   delete this.activeStopTrigger;
@@ -275,6 +334,16 @@ PaperTrader.prototype.processCandle = function(candle, done) {
 
   if(this.activeStopTrigger) {
     this.activeStopTrigger.instance.updatePrice(this.price);
+  }
+
+  if (this.waitForVolume){
+    log.debug('Candle Volume =', candle.volume);
+  }
+
+  if (candle.volume > avgVol && this.waitForVolume) {
+    this.processAdvice(this.previousAdvice);
+    this.waitForVolume = false;
+    this.previousAdvice = undefined;
   }
 
   done();

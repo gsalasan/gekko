@@ -23,6 +23,7 @@ import spinner from '../../global/blockSpinner.vue'
 import importConfigBuilder from './importConfigBuilder.vue'
 
 import marked from '../../../tools/marked'
+import { alert } from '../../../tools/ui';
 
 let intro = marked(`
 
@@ -61,8 +62,8 @@ export default {
     run: function() {
       let daysApart = this.daysApart(this.config.importer.daterange);
 
-      if(daysApart < 1)
-        return alert('You can only import at least one day of data..')
+      /*if(daysApart < 1)
+        return alert('You can only import at least one day of data..')*/
 
       let exchange = this.$store.state.exchanges[this.config.watch.exchange];
       if ("exchangeMaxHistoryAge" in exchange) {
@@ -72,14 +73,18 @@ export default {
       }
 
       post('import', this.config, (error, response) => {
-        if(error)
-          return alert(error);
-
-        this.$store.commit('addImport', response);
-
-        this.$router.push({
-          path: `/data/importer/import/${response.id}`,
-        })
+        if(error) {
+          if(error.status === 403) {
+            alert('Недостаточно прав!')
+          } else {
+            return alert(error);
+          }
+        } else {
+          this.$store.commit('addImport', response);
+          this.$router.push({
+            path: `/data/importer/import/${response.id}`,
+          });
+        }
       });
     }
   }

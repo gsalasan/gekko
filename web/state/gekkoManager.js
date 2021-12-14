@@ -1,7 +1,10 @@
 const _ = require('lodash');
 const moment = require('moment');
 
+const cache = require('./cache');
 const broadcast = require('./cache').get('broadcast');
+let dependenciesManager = require('./cache').get('dependencies');
+
 const Logger = require('./logger');
 const pipelineRunner = require('../../core/workers/pipeline/parent');
 const reduceState = require('./reduceState.js');
@@ -15,7 +18,7 @@ const GekkoManager = function() {
   this.archivedGekkos = {};
 }
 
-GekkoManager.prototype.add = function({mode, config}) {
+GekkoManager.prototype.add = function({mode, config, gekko, indicators}) {
   // set type
   let type;
   if(mode === 'realtime') {
@@ -37,28 +40,64 @@ GekkoManager.prototype.add = function({mode, config}) {
 
   const date = now().replace(' ', '-').replace(':', '-');
   const n = (Math.random() + '').slice(3);
-  const id = `${date}-${logType}-${n}`;
+  let id = `${date}-${logType}-${n}`;
+  let state;
+  id = gekko && gekko.id || id;
 
-  // make sure we catch events happening inside te gekko instance
-  config.childToParent.enabled = true;
+  if(gekko && gekko.type !== 'watcher') {
+    // load indicators:
+    config.indicators = indicators || {};
+    // restoring existing gekko from db:
+    config.childToParent.enabled = true;
+    state = {
+      mode: gekko.mode || mode,
+      config,
+      id,
+      type: gekko.type || type,
+      logType: gekko.logType || logType,
+      active: !_.isUndefined(gekko.active) ? gekko.active : true,
+      stopped: !_.isUndefined(gekko.stopped) ? gekko.stopped : false,
+      errored: !_.isUndefined(gekko.errored) ? gekko.errored : false,
+      errorMessage: !_.isUndefined(gekko.errorMessage) ? gekko.errorMessage : false,
+      events: gekko.events || {
+        initial: {},
+        latest: {}
+      },
+      start: moment(),
+    }
+  } else {
 
-  const state = {
-    mode,
-    config,
-    id,
-    type,
-    logType,
-    active: true,
-    stopped: false,
-    errored: false,
-    errorMessage: false,
-    events: {
-      initial: {},
-      latest: {}
-    },
-    start: moment()
+    // make sure we catch events happening inside te gekko instance
+    config.childToParent.enabled = true;
+    state = {
+      mode,
+      config,
+      id,
+      type,
+      logType,
+      active: true,
+      stopped: false,
+      errored: false,
+      errorMessage: false,
+      events: {
+        initial: {},
+        latest: {}
+      },
+      start: moment(),
+    }
+
   }
+  if(!!gekko){
+    state.isProgrammaticCreation = true;
+  }
+  config.gekkoId = id;
 
+  if(type === 'watcher') {
+    state.events.initial = {};
+    state.events.latest = {};
+  }
+  let usr = cache.get('user');
+  state.ownerId = gekko && gekko.ownerId || cache.get('user') && cache.get('user').get('id');
   this.gekkos[id] = state;
 
   this.loggers[id] = new Logger(id);
@@ -79,7 +118,9 @@ GekkoManager.prototype.add = function({mode, config}) {
     id,
     state
   });
-
+  if(!dependenciesManager){
+    dependenciesManager = require('./cache').get('dependencies'); // circular reference problem
+  }
   return state;
 }
 
@@ -141,6 +182,7 @@ GekkoManager.prototype.handleFatalError = function(id, err) {
 // figure out it we can safely start a new watcher without
 // the leechers noticing.
 GekkoManager.prototype.handleWatcherError = function(state, id) {
+  let watch1, watch2;
   console.log(`${now()} A gekko watcher crashed.`);
   if(!state.events.latest.candle) {
     console.log(`${now()} was unable to start.`);
@@ -150,15 +192,15 @@ GekkoManager.prototype.handleWatcherError = function(state, id) {
   if(state.events.latest && state.events.latest.candle) {
     latestCandleTime = state.events.latest.candle.start;
   }
+  watch1 = state.config.watch;
   const leechers = _.values(this.gekkos)
     .filter(gekko => {
       if(gekko.type !== 'leech') {
         return false;
       }
-
-      if(_.isEqual(gekko.config.watch, state.config.watch)) {
-        return true;
-      }
+      watch2 = gekko.config.watch;
+      return !!(watch1 && watch2
+        && watch1.asset === watch2.asset && watch1.currency === watch2.currency && watch1.exchange === watch2.exchange);
     });
 
   if(leechers.length) {
@@ -247,8 +289,67 @@ GekkoManager.prototype.archive = function(id) {
   });
 }
 
+GekkoManager.prototype.restart = function({ id }) {
+  let gekko = this.gekkos[id] || this.archivedGekkos[id];
+  const user = cache.get('user');
+  if(!gekko || !user)
+    return false;
+
+  console.log(`${now()} restarting Gekko ${id}`);
+
+
+  delete this.gekkos[id];
+  delete this.archivedGekkos[id];
+  // this.instances[id] && this.instances[id].kill();
+
+  gekko.active = true;
+  gekko.stopped = false;
+  gekko.errored = false;
+  gekko.errorMessage = false;
+
+  this.add({ mode: gekko.mode, config: gekko.config, gekko: gekko });
+
+  broadcast({
+    type: 'gekko_restarted',
+    id,
+    gekko
+  });
+
+  // this.archive(id);
+
+  return true;
+}
+
 GekkoManager.prototype.list = function() {
   return { live: this.gekkos, archive: this.archivedGekkos };
+}
+
+GekkoManager.prototype.command = function(id, command) {
+  let ret = { success: false, payload: {}}, gekkoProcess = this.instances[id];
+  if(gekkoProcess && !gekkoProcess.killed && !!gekkoProcess.connected && gekkoProcess.exitCode !== 1) {
+    try {
+      const ret1 = gekkoProcess.send({
+        event: 'command1',
+        type: 'command1',
+        payload: {
+          command, id
+        },
+      });
+      ret.success = true;
+      ret.payload = ret1;
+    } catch (e) {
+      console.error('GekkoManager.prototype.command::thrown exception: ', e);
+      ret.success = false;
+      ret.reason = 'thrown exception';
+      ret.payload = e;
+    }
+  } else {
+    console.error('GekkoManager.prototype.command::process is not running: ', JSON.stringify(gekkoProcess));
+    ret.success = false;
+    ret.reason = 'process is not running (probably this Gekko died)';
+    ret.payload = gekkoProcess;
+  }
+  return ret;
 }
 
 module.exports = GekkoManager;

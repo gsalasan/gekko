@@ -24,11 +24,12 @@ var Actor = function(done) {
 
   var mode = util.gekkoMode();
 
+  const isExactStartAt = !!config.tradingAdvisor.startAtExact;
   // the stitcher will try to pump in historical data
   // so that the strat can use this data as a "warmup period"
   //
   // the realtime "leech" market won't use the stitcher
-  if(mode === 'realtime' && !isLeecher) {
+  if(mode === 'realtime' && !isLeecher || isExactStartAt) {
     var Stitcher = require(dirs.tools + 'dataStitcher');
     var stitcher = new Stitcher(this.batcher);
     stitcher.prepareHistoricalData(done);
@@ -47,7 +48,15 @@ Actor.prototype.setupStrategy = function() {
 
   // bind all trading strategy specific functions
   // to the WrappedStrategy.
-  const WrappedStrategy = require('./baseTradingMethod');
+  let WrappedStrategy;
+
+  if(config.asyncStrategies.indexOf(this.strategyName) > -1) {
+    // meaning we want to make async this strat!
+    WrappedStrategy = require('./baseTradingMethodAsync');
+  } else {
+    WrappedStrategy = require('./baseTradingMethod');
+  }
+
 
   _.each(strategy, function(fn, name) {
     WrappedStrategy.prototype[name] = fn;
@@ -103,8 +112,71 @@ Actor.prototype.emitStratCandle = function(candle) {
   this.strategy.tick(candle, next);
 }
 
+Actor.prototype.processTradeInitiated = function(pendingTrade) {
+  this.strategy.processPendingTrade(pendingTrade);
+}
+
+Actor.prototype.processTradeAborted = function(abortedTrade) {
+  this.strategy.processTerminatedTrades(abortedTrade);
+}
+
+Actor.prototype.processTradeCancelled = function(cancelledTrade) {
+  this.strategy.processTerminatedTrades(cancelledTrade);
+}
+
+Actor.prototype.processTradeErrored = function(tradeError) {
+  this.strategy.processTerminatedTrades((tradeError));
+}
+
+Actor.prototype.processPortfolioChange = function(portfolio) {
+  this.strategy.updatePortfolio(portfolio);
+}
+
+Actor.prototype.processPortfolioValueChange = function(portfolioValue) {
+  this.strategy.newPortfolioValue(portfolioValue);
+}
+
 Actor.prototype.processTradeCompleted = function(trade) {
   this.strategy.processTrade(trade);
+}
+
+Actor.prototype.processTriggerFired = function(data) {
+  this.strategy.triggerFired(data);
+}
+
+// Actor.prototype.processTradeErrored = function(trade) {
+//   this.strategy.processTrade(trade);
+// }
+
+Actor.prototype.processCommand = function(command) {
+  if(command && command.command && command.command.name === 'forceBuy') {
+    if(this.strategy && this.strategy.buy) {
+      // this is wrapped strat, so we need to do strat.buy instead of advise:
+      this.strategy.buy('forceBuy command was triggered by user', {
+        // todo: add limitPrice and margin to options later
+      });
+    } else {
+      this.relayAdvice({
+        // limit: options.limitPrice, // add field in ui later
+        direction: 'long',
+        // margin: options.margin
+      });
+    }
+  } else if(command && command.command && command.command.name === 'forceSell') {
+    if(this.strategy && this.strategy.sell) {
+      // this is wrapped strat, so we need to do strat.sell instead of advise:
+      this.strategy.sell('forceSell command was triggered by user', {
+        // todo: add limitPrice and margin to options later
+      });
+    } else {
+      this.relayAdvice({
+        // limit: options.limitPrice, // add field in ui later
+        direction: 'short',
+        // margin: options.margin
+      });
+    }
+  }
+  this.strategy.processCommand(command);
 }
 
 // pass through shutdown handler

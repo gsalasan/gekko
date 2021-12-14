@@ -1,0 +1,14 @@
+TAKE_PROFIT = 0.003
+STOP_LOSS = 0.035
+#how many times we buy on single line?
+CROSS_ATTEMPTS = 1
+
+[aaat]
+USE_HEIKEN = false
+HIGH = 4
+DEVIATION = 0.01
+
+[margin]
+useShort = true
+
+#isPersistent = false

@@ -12,6 +12,7 @@ const perfConfig = config.performanceAnalyzer;
 const watchConfig = config.watch;
 
 const Logger = require('./logger');
+let maxExposure = 0;
 
 const PerformanceAnalyzer = function() {
   _.bindAll(this);
@@ -48,6 +49,7 @@ const PerformanceAnalyzer = function() {
   this.openRoundTrip = false;
 
   this.warmupCompleted = false;
+  this.lastTrade = null;
 }
 
 PerformanceAnalyzer.prototype.processPortfolioValueChange = function(event) {
@@ -115,6 +117,7 @@ PerformanceAnalyzer.prototype.processTradeCompleted = function(trade) {
     this.logger.handleTrade(trade, report);
     this.deferredEmit('performanceReport', report);
   }
+  this.lastTrade = trade;
 }
 
 PerformanceAnalyzer.prototype.registerRoundtripPart = function(trade) {
@@ -140,6 +143,7 @@ PerformanceAnalyzer.prototype.registerRoundtripPart = function(trade) {
       date: trade.date,
       price: trade.price,
       total: trade.portfolio.currency + (trade.portfolio.asset * trade.price),
+      margin: trade.margin || {}
     }
     this.openRoundTrip = false;
 
@@ -159,11 +163,20 @@ PerformanceAnalyzer.prototype.handleCompletedRoundtrip = function() {
     exitPrice: this.roundTrip.exit.price,
     exitBalance: this.roundTrip.exit.total,
 
-    duration: this.roundTrip.exit.date.diff(this.roundTrip.entry.date)
+    duration: this.roundTrip.exit.date.diff(this.roundTrip.entry.date),
+    isMargin: this.roundTrip.exit.margin.type === 'short'
+  }
+  if(this.roundTrip.exit.margin.type !== 'short') {
+    // todo: check if margin.leverage !== 1 (multiply profit for long)
+    roundtrip.pnl = roundtrip.exitBalance - roundtrip.entryBalance;
+    roundtrip.profit = (100 * roundtrip.exitBalance / roundtrip.entryBalance) - 100;
+  } else if(this.roundTrip.exit.margin.type === 'short') {
+    roundtrip.pnl = roundtrip.exitBalance - roundtrip.entryBalance;
+    roundtrip.profit = (100 * roundtrip.exitBalance / roundtrip.entryBalance) - 100;
+    /*roundtrip.pnl =  roundtrip.entryBalance - roundtrip.exitBalance;
+    roundtrip.profit = (100 * roundtrip.entryBalance / roundtrip.exitBalance) - 100;*/
   }
 
-  roundtrip.pnl = roundtrip.exitBalance - roundtrip.entryBalance;
-  roundtrip.profit = (100 * roundtrip.exitBalance / roundtrip.entryBalance) - 100;
 
   this.roundTrips[this.roundTrip.id] = roundtrip;
 
@@ -173,13 +186,16 @@ PerformanceAnalyzer.prototype.handleCompletedRoundtrip = function() {
 
   // update cached exposure
   this.exposure = this.exposure + Date.parse(this.roundTrip.exit.date) - Date.parse(this.roundTrip.entry.date);
+  if(Date.parse(this.roundTrip.exit.date) - Date.parse(this.roundTrip.entry.date) > maxExposure){
+    maxExposure = Date.parse(this.roundTrip.exit.date) - Date.parse(this.roundTrip.entry.date);
+  }
   // track losses separately for downside report
   if (roundtrip.exitBalance < roundtrip.entryBalance)
     this.losses.push(roundtrip);
 
 }
 
-PerformanceAnalyzer.prototype.calculateReportStatistics = function() {
+PerformanceAnalyzer.prototype.calculateReportStatistics = function(isFinalReport) {
   if(!this.start.balance || !this.start.portfolio) {
     log.error('Cannot calculate a profit report without having received portfolio data.');
     log.error('Skipping performanceReport..');
@@ -194,6 +210,18 @@ PerformanceAnalyzer.prototype.calculateReportStatistics = function() {
   );
   const relativeProfit = this.balance / this.start.balance * 100 - 100;
   const relativeYearlyProfit = relativeProfit / timespan.asYears();
+  let losses = this.roundTrips.filter(r => r.profit < 0).length;
+
+  if(isFinalReport && this.trades % 2 === 1 && this.lastTrade){
+    const finalExposure = this.dates.end - Date.parse(this.lastTrade.date);
+    this.exposure += finalExposure;
+    if(finalExposure > maxExposure) {
+      maxExposure = finalExposure;
+    }
+    if(config.backtest){
+      losses +=1; // if trade was not closed, consider as a loss for backtesting
+    }
+  }
 
   const percentExposure = this.exposure / (Date.parse(this.dates.end) - Date.parse(this.dates.start));
 
@@ -224,7 +252,9 @@ PerformanceAnalyzer.prototype.calculateReportStatistics = function() {
     trades: this.trades,
     startBalance: this.start.balance,
     exposure: percentExposure,
+    maxExposure,
     sharpe,
+    losses,
     downside,
     ratioRoundTrips
   }
@@ -235,11 +265,8 @@ PerformanceAnalyzer.prototype.calculateReportStatistics = function() {
 }
 
 PerformanceAnalyzer.prototype.finalize = function(done) {
-  if(!this.trades) {
-    return done();
-  }
 
-  const report = this.calculateReportStatistics();
+  const report = this.calculateReportStatistics(true);
   if(report) {
     this.logger.finalize(report);
     this.emit('performanceReport', report);

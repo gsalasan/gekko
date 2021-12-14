@@ -1,10 +1,15 @@
 import { get } from '../../../tools/ajax'
 import store from '../../'
 import { bus } from '../../../components/global/ws'
+import { alert } from '../../../tools/ui';
 
 const init = () => {
   get('imports', (err, resp) => {
-    store.commit('syncImports', resp);
+    if(err) {
+      // alert('Недостаточно прав!')
+    } else {
+      store.commit('syncImports', resp);
+    }
   });
 }
 
@@ -14,7 +19,9 @@ const sync = () => {
   });
 }
 
-export default function() {
+export default function(isResync) {
   init();
-  sync();
+  if(!isResync) {
+    sync();
+  }
 }

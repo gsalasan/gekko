@@ -2,9 +2,9 @@ import superagent from 'superagent'
 import noCache from 'superagent-no-cache'
 import { restPath } from './api.js'
 
-const processResponse = next => (err, res) => {
+export const processResponse = next => (err, res) => {
   if(err)
-    return next(err);
+    return next(err, res);
 
   if(!res.text)
     return next('no data');
@@ -19,6 +19,7 @@ export const post = (to, data, next) => {
     .post(restPath + to)
     .use(noCache)
     .send(data)
+    .withCredentials()
     .end(processResponse(next));
 }
 
@@ -26,5 +27,13 @@ export const get = (to, next) => {
   superagent
     .get(restPath + to)
     .use(noCache)
+    .withCredentials()
+    .end(processResponse(next));
+}
+export const del = (to, next) => {
+  superagent
+    .del(restPath + to)
+    .use(noCache)
+    .withCredentials()
     .end(processResponse(next));
 }
