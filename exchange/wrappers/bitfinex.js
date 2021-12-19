@@ -22,7 +22,7 @@ var Trader = function(config) {
   this.pair = this.asset + this.currency;
   this.bitfinex = new Bitfinex.RESTv1({apiKey: this.key, apiSecret: this.secret, transform: true});
 
-  this.interval = 4000;
+  this.interval = 3000;
 }
 
 const includes = (str, list) => {
