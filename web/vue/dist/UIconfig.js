@@ -13,7 +13,7 @@ const CONFIG = {
   },
   ui: {
     ssl: false,
-    host: '0.0.0.0',
+    host: 'https://gekko-gsalasan.cloud.okteto.net',
     port: 3000,
     path: '/'
   },
