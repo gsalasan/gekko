@@ -40,11 +40,11 @@ dwsync.xml
 node_modules
 candles.csv
 cexio.db
-history
+#history
 TMP_*
 .idea
 volumes
-config.js
+#config.js
 config-*.js
 private-*.js
 private-*.toml
