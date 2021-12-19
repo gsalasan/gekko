@@ -64,7 +64,7 @@ config.postgresql = {
   path: 'plugins/postgresql',
   version: 0.1,
   // connectionString: 'postgres://postgres:Slon48@postgresql:5432', // docker version, database - gekko
-  connectionString: 'postgres://postgres:Slon48@0.0.0.0:5434', // local version, database - gekko2
+  connectionString: 'postgres://postgres:Slon48@localhost:5434', // local version, database - gekko2
   database: 'gekko2', // if set, we'll put all tables into a single database.
   schema: 'public',
   dependencies: [{

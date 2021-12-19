@@ -274,7 +274,7 @@ config.campfire = {
 config.redisBeacon = {
   enabled: false,
   port: 6379, // redis default
-  host: '0.0.0.0', // 0.0.0.0
+  host: 'localhost', // localhost
     // On default Gekko broadcasts
     // events in the channel with
     // the name of the event, set
@@ -357,7 +357,7 @@ config.sqlite = {
 config.postgresql = {
   path: 'plugins/postgresql',
   version: 0.1,
-  connectionString: 'postgres://user:pass@0.0.0.0:5434', // if default port
+  connectionString: 'postgres://user:pass@localhost:5434', // if default port
   database: null, // if set, we'll put all tables into a single database.
   schema: 'public',
   dependencies: [{

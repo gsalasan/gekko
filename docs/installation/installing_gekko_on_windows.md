@@ -66,7 +66,7 @@ Once your build tools are installed, or for other operating systems
 
     node gekko --ui
 
-Your browser should automatically open with the UI. If it doesn't, manually browse to [http://0.0.0.0:3000](http://0.0.0.0:3000).
+Your browser should automatically open with the UI. If it doesn't, manually browse to [http://localhost:3000](http://localhost:3000).
     
 ### Stopping Gekko
 

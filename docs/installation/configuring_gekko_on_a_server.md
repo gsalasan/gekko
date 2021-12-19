@@ -22,7 +22,7 @@ Edit the uiconfig file like so:
     const CONFIG = {
         headless: true,
         api: {
-            host: '0.0.0.0',
+            host: 'localhost',
             port: 3000,
         },
         ui: {
@@ -48,7 +48,7 @@ The following assumes you configured a reverse proxy, if you did not simply foll
     const CONFIG = {
         headless: true,
         api: {
-            host: '0.0.0.0',
+            host: 'localhost',
             port: 3000,
         },
         ui: {
@@ -77,7 +77,7 @@ Once NGINX is installed you will need to modify the configuration file. For Debi
     }
 
     upstream websocket {
-        server 0.0.0.0:3000;
+        server localhost:3000;
     }
 
     server {

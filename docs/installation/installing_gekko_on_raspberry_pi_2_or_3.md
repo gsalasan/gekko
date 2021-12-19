@@ -51,7 +51,7 @@ Once you have Gekko downloaded you need to install the dependencies, open your t
 
 Set headless to true
 
-Set api.host to 0.0.0.0
+Set api.host to localhost
 
 Set ui.host to Pi's IP address (e.g. 192.168.1.74)
 

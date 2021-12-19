@@ -1,6 +1,6 @@
 FROM node:10
 
-ENV HOST 0.0.0.0
+ENV HOST localhost
 ENV PORT 3000
 
 # Create app directory
