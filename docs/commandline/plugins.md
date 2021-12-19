@@ -194,7 +194,7 @@ This is an advanced plugin only for programmers! If you are interested in this r
     config.redisBeacon = {
       enabled: false,
       port: 6379, // redis default
-      host: '0.0.0.0', // localhost
+      host: '0.0.0.0', // 0.0.0.0
         // On default Gekko broadcasts
         // events in the channel with
         // the name of the event, set
