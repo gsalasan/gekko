@@ -77,7 +77,7 @@ Once NGINX is installed you will need to modify the configuration file. For Debi
     }
 
     upstream websocket {
-        server localhost:3000;
+        server 0.0.0.0:3000;
     }
 
     server {

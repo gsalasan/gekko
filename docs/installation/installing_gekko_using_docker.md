@@ -7,7 +7,7 @@ $ docker-compose build
 $ docker-compose up -d
 ```
 
-You can now find your gekko instance running on `localhost:3000`.
+You can now find your gekko instance running on `0.0.0.0:3000`.
 
 ## Installing for external access
 
