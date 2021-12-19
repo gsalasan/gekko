@@ -274,7 +274,7 @@ config.campfire = {
 config.redisBeacon = {
   enabled: false,
   port: 6379, // redis default
-  host: '127.0.0.1', // localhost
+  host: '0.0.0.0', // localhost
     // On default Gekko broadcasts
     // events in the channel with
     // the name of the event, set

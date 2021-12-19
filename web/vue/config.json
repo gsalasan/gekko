@@ -1,6 +1,6 @@
 {
   "site-name": "$LON",
-  "url": "http://localhost:4000",
+  "url": "http://0.0.0.0:4000",
   "authTokenName": "vue-authenticate.vueauth_token",
   "auth": {
     "google": {
