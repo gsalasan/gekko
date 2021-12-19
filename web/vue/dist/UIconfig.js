@@ -5,15 +5,15 @@
 // see https://gekko.wizb.it/docs/installation/installing_gekko_on_a_server.html#Configuring-Gekko
 
 const CONFIG = {
-  headless: false,
+  headless: true,
   api: {
-    host: 'localhost',
+    host: '0.0.0.0',
     port: 3000,
     timeout: 10 * 120000 // 20 minutes
   },
   ui: {
     ssl: false,
-    host: 'localhost',
+    host: '0.0.0.0',
     port: 3000,
     path: '/'
   },
